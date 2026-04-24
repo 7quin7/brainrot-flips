@@ -1,55 +1,45 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+const socket = io();
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+// create flip
+function createRoom() {
+  const bet = document.getElementById("bet").value;
 
-const PORT = process.env.PORT || 3000;
+  if (!bet || bet <= 0) {
+    alert("Enter a valid bet!");
+    return;
+  }
 
-app.use(express.static("public"));
+  socket.emit("createRoom", bet);
+}
 
-let rooms = [];
+// update rooms lijst
+socket.on("rooms", (rooms) => {
+  const div = document.getElementById("rooms");
+  div.innerHTML = "";
 
-// wanneer iemand connect
-io.on("connection", (socket) => {
-  console.log("User connected");
+  if (rooms.length === 0) {
+    div.innerHTML = "<p>No open flips</p>";
+    return;
+  }
 
-  // maak room
-  socket.on("createRoom", (bet) => {
-    const room = {
-      id: Math.random().toString(36).substring(7),
-      bet: Number(bet),
-      players: [socket.id]
-    };
+  rooms.forEach(room => {
+    const el = document.createElement("div");
 
-    rooms.push(room);
+    el.innerHTML = `
+      💰 Bet: $${room.bet}
+      <button onclick="joinRoom('${room.id}')">Join</button>
+    `;
 
-    io.emit("rooms", rooms);
-  });
-
-  // join room
-  socket.on("joinRoom", (id) => {
-    const room = rooms.find(r => r.id === id);
-
-    if (!room) return;
-
-    room.players.push(socket.id);
-
-    // coinflip
-    const winner = room.players[Math.floor(Math.random() * room.players.length)];
-
-    io.to(room.players[0]).emit("result", winner === room.players[0] ? "YOU WIN" : "YOU LOSE");
-    io.to(room.players[1]).emit("result", winner === room.players[1] ? "YOU WIN" : "YOU LOSE");
-
-    // remove room
-    rooms = rooms.filter(r => r.id !== id);
-
-    io.emit("rooms", rooms);
+    div.appendChild(el);
   });
 });
 
-server.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+// join room
+function joinRoom(id) {
+  socket.emit("joinRoom", id);
+}
+
+// resultaat ontvangen
+socket.on("result", (result) => {
+  document.getElementById("result").innerText = result;
 });
