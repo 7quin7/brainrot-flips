@@ -1,35 +1,55 @@
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 
-// 👇 dit is BELANGRIJK
 app.use(express.static("public"));
 
-// coinflip API
-let balance = 100;
+let rooms = [];
 
-app.get("/flip/:bet", (req, res) => {
-  const bet = Number(req.params.bet);
+// wanneer iemand connect
+io.on("connection", (socket) => {
+  console.log("User connected");
 
-  if (bet > balance) {
-    return res.json({ error: "Not enough balance" });
-  }
+  // maak room
+  socket.on("createRoom", (bet) => {
+    const room = {
+      id: Math.random().toString(36).substring(7),
+      bet: Number(bet),
+      players: [socket.id]
+    };
 
-  const win = Math.random() < 0.5;
+    rooms.push(room);
 
-  if (win) {
-    balance += bet;
-  } else {
-    balance -= bet;
-  }
+    io.emit("rooms", rooms);
+  });
 
-  res.json({
-    result: win ? "WIN" : "LOSE",
-    balance
+  // join room
+  socket.on("joinRoom", (id) => {
+    const room = rooms.find(r => r.id === id);
+
+    if (!room) return;
+
+    room.players.push(socket.id);
+
+    // coinflip
+    const winner = room.players[Math.floor(Math.random() * room.players.length)];
+
+    io.to(room.players[0]).emit("result", winner === room.players[0] ? "YOU WIN" : "YOU LOSE");
+    io.to(room.players[1]).emit("result", winner === room.players[1] ? "YOU WIN" : "YOU LOSE");
+
+    // remove room
+    rooms = rooms.filter(r => r.id !== id);
+
+    io.emit("rooms", rooms);
   });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
