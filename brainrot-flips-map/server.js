@@ -1,45 +1,51 @@
-const socket = io();
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 
-// create flip
-function createRoom() {
-  const bet = document.getElementById("bet").value;
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-  if (!bet || bet <= 0) {
-    alert("Enter a valid bet!");
-    return;
-  }
+const PORT = process.env.PORT || 3000;
 
-  socket.emit("createRoom", bet);
-}
+app.use(express.static("public"));
 
-// update rooms lijst
-socket.on("rooms", (rooms) => {
-  const div = document.getElementById("rooms");
-  div.innerHTML = "";
+let rooms = [];
 
-  if (rooms.length === 0) {
-    div.innerHTML = "<p>No open flips</p>";
-    return;
-  }
+io.on("connection", (socket) => {
+  console.log("User connected");
 
-  rooms.forEach(room => {
-    const el = document.createElement("div");
+  socket.on("createRoom", (bet) => {
+    const room = {
+      id: Math.random().toString(36).substring(7),
+      bet: Number(bet),
+      players: [socket.id]
+    };
 
-    el.innerHTML = `
-      💰 Bet: $${room.bet}
-      <button onclick="joinRoom('${room.id}')">Join</button>
-    `;
+    rooms.push(room);
+    io.emit("rooms", rooms);
+  });
 
-    div.appendChild(el);
+  socket.on("joinRoom", (id) => {
+    const room = rooms.find(r => r.id === id);
+    if (!room) return;
+
+    room.players.push(socket.id);
+
+    const winner = room.players[Math.floor(Math.random() * room.players.length)];
+
+    room.players.forEach(player => {
+      io.to(player).emit(
+        "result",
+        winner === player ? "YOU WIN" : "YOU LOSE"
+      );
+    });
+
+    rooms = rooms.filter(r => r.id !== id);
+    io.emit("rooms", rooms);
   });
 });
 
-// join room
-function joinRoom(id) {
-  socket.emit("joinRoom", id);
-}
-
-// resultaat ontvangen
-socket.on("result", (result) => {
-  document.getElementById("result").innerText = result;
+server.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
 });
