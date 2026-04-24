@@ -13,8 +13,9 @@ app.use(express.static("public"));
 let rooms = [];
 
 io.on("connection", (socket) => {
-  console.log("User connected");
+  console.log("User connected:", socket.id);
 
+  // CREATE ROOM
   socket.on("createRoom", (bet) => {
     const room = {
       id: Math.random().toString(36).substring(7),
@@ -23,25 +24,51 @@ io.on("connection", (socket) => {
     };
 
     rooms.push(room);
+
+    console.log("Room created:", room);
+
     io.emit("rooms", rooms);
   });
 
+  // JOIN ROOM
   socket.on("joinRoom", (id) => {
     const room = rooms.find(r => r.id === id);
     if (!room) return;
 
+    // voorkom dat iemand 2x joint
+    if (room.players.includes(socket.id)) return;
+
     room.players.push(socket.id);
 
-    const winner = room.players[Math.floor(Math.random() * room.players.length)];
+    // alleen doorgaan als 2 spelers
+    if (room.players.length !== 2) return;
 
-    room.players.forEach(player => {
-      io.to(player).emit(
-        "result",
-        winner === player ? "YOU WIN" : "YOU LOSE"
-      );
-    });
+    const p1 = room.players[0];
+    const p2 = room.players[1];
 
+    // random winnaar
+    const winner = Math.random() < 0.5 ? p1 : p2;
+
+    console.log("Players:", p1, p2);
+    console.log("Winner:", winner);
+
+    // stuur resultaat
+    io.to(p1).emit("result", winner === p1 ? "YOU WIN" : "YOU LOSE");
+    io.to(p2).emit("result", winner === p2 ? "YOU WIN" : "YOU LOSE");
+
+    // verwijder room
     rooms = rooms.filter(r => r.id !== id);
+
+    io.emit("rooms", rooms);
+  });
+
+  // DISCONNECT
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+
+    // verwijder speler uit rooms
+    rooms = rooms.filter(room => !room.players.includes(socket.id));
+
     io.emit("rooms", rooms);
   });
 });
